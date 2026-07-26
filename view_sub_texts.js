@@ -107,7 +107,6 @@ mp.observe_property 监听属性变化？
 - 加载速度优化？
 
 - 初始时自动编辑 uosc.conf 加入 uosc 按钮？
-- mpv user script 添加 'based on uosc',
 
 - 字幕同步滚动：可能打乱用户操作，所以提供选项可以开启，默认关闭。
     实现方案：
