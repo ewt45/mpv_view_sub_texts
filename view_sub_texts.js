@@ -17,7 +17,7 @@ https://github.com/ewt45/mpv_view_sub_texts \
    `Ctrl+S script-binding view_sub_texts/show_sub_tracks` (大写 S 表示 shift + s)
 
    uosc 底部按钮：在 `script-opts/uosc.conf` 的 `controls=` 中  
-      `controls=....,gap,button:view_sub_texts,......`
+      `controls=....,gap,<has_sub>button:view_sub_texts,......`
 
 4. 在 mpv 中播放视频后，点击按钮或快捷键即可弹出字幕轨道列表。
 
@@ -1079,12 +1079,6 @@ var CONTROL_BAR_BUTTON = {
 // 注册供 input.conf 调用的绑定名称
 mp.add_key_binding(null, SCRIPT_CMD_SHOW_SUBTITLE_TRACKS, showSubTracksMenu);
 
-// 注册 uosc 底部控制条的按钮，用户可以在  script-opts/uosc.conf 中的 controls= 中添加 button:SCRIPT_UOSC_BTN_SHOW_SUBTITLE_TRACKS
+// 注册 uosc 底部控制条的按钮，用户可以在  script-opts/uosc.conf 中的 controls= 中添加 <has_sub>button:btnName
 uosc.setButton(SCRIPT_UOSC_BTN_SHOW_SUBTITLE_TRACKS, CONTROL_BAR_BUTTON)
-
-// 注册属性监听，在没有字幕轨道时隐藏底部控制条的按钮。
-mp.observe_property("track-list", "native", function (name, value) {
-    CONTROL_BAR_BUTTON.hide = getSubTracks().length === 0
-    uosc.setButton(SCRIPT_UOSC_BTN_SHOW_SUBTITLE_TRACKS, CONTROL_BAR_BUTTON)
-});
 

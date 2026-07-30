@@ -15,7 +15,7 @@ https://github.com/ewt45/mpv_view_sub_texts \
    `Ctrl+S script-binding view_sub_texts/show_sub_tracks` (大写 S 表示 shift + s)
 
    uosc 底部按钮：在 `script-opts/uosc.conf` 的 `controls=` 中  
-      `controls=....,gap,button:view_sub_texts,......`
+      `controls=....,gap,<has_sub>button:view_sub_texts,......`
 
 4. 在 mpv 中播放视频后，点击按钮或快捷键即可弹出字幕轨道列表。
 
@@ -42,7 +42,7 @@ Lists subtitle tracks via the uosc menu in mpv. Click a track to display its ful
    `Ctrl+S script-binding view_sub_texts/show_sub_tracks`
 
    uosc bottom button: in `script-opts/uosc.conf`  
-      `controls=....,gap,button:view_sub_texts,......`
+      `controls=....,gap,<has_sub>button:view_sub_texts,......`
 
 4. After starting video playback in mpv, press the shortcut or click the button to open the subtitle track list.
 
