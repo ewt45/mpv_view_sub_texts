@@ -116,25 +116,12 @@ mp.observe_property 监听属性变化？
 
 */
 
-var SCRIPT_NAME = mp.get_script_name(); // "view_sub_texts"
-var SCRIPT_CMD_SHOW_SUBTITLE_TRACKS = "show_sub_tracks";
-var SCRIPT_CMD_SHOW_SUBTITLE_CONTENT = "show_sub_content";
-var SCRIPT_UOSC_BTN_SHOW_SUBTITLE_TRACKS = "view_sub_texts"
-var SCRIPT_UOSC_MENU_ID_SELECT_TRACK = "Select Track"
-var SCRIPT_UOSC_MENU_ID_SUB_LINES = "Display Content"
-var SCRIPT_UOSC_MENU_ID_GENERAL_DIALOG = "General Dialog"
 
-/** 支持的字幕编码格式. 属性名为 codec, 对应的值为文件后缀 */
-var SUPPORTED_CODECS = { subrip: '.srt', ass: '.ass' }
 
-/** 是否为 flatpak 环境 */
-var isFlatpak = mp.utils.getenv('FLATPAK_ID') // 'io.mpv.Mpv'
+// #region 独立于脚本的公共部分
+// 公共部分放在一个 region 里。可以跨文件复制进行同步
 
-/** 
- * @type {{rawText: string, srtText: string, subLines: SubLine[]}} 
- * 用于存储字幕内容。rawText 为原始格式文本， srtText 为转为 srt 格式后的文本。lines 为每行字幕信息。
- */
-var subText = { rawText: '', srtText: '', subLines: [] }
+var SCRIPT_NAME = mp.get_script_name();
 
 /** mp 内置函数。以及自己的扩展。 */
 var mp = mp || {}
@@ -213,30 +200,6 @@ else {
 
 
 // #region 类型定义
-
-
-/**
- * 
- * @typedef {Object}    SubTrackInfo    一个字幕轨道的信息
- * @property {number}   id          mpv 为其分配的轨道 id, 在一个类型（如字幕）中应该唯一。
- * @property {boolean}  selected    是否为当前显示的字幕轨道
- * @property {number}   ffIndex     通常用于 ffmpeg 的 stream index. 如果 demuxer 不是 libavformat 该值可能错误。mkv 一般正确。
- * @property {string}   title       标题
- * @property {string}   lang        语言
- * @property {boolean}  external    是否为外部文件
- * @property {string | undefined} externalFilename 外部文件名
- * @property {string}   codec       编码类型
- */
-
-
-/**
- * @typedef {Object}    SubLine     字幕文件中的一条字幕
- * @property {number}   startTime   起始时间，单位秒
- * @property {number}   endTime     结束时间，单位秒
- * @property {string}   text        字幕文本
- * @property {number}   splitCount  （按行）拆分成了几个 item
- * @property {number}   [itemIndex] 在 menu.items 中的 index. 便于选中特定时间的那一行
- */
 
 /**
  * @typedef {('copy' | 'ok' | 'open-dir')}  TextDialogButton 用于 uosc.showText 时显示的按钮类型
@@ -321,13 +284,21 @@ else {
 
 /** @typedef {Item|Submenu} Child */
 
+/** @typedef {{type: 'activate', menu_id: string, index: number, value: any, action?: string, keep_open?: boolean, modifiers?: string, alt: boolean, ctrl: boolean, shift: boolean, is_pointer: boolean}} MenuEventActivate */
+/** @typedef {{type: 'move', menu_id: string, from_index: number, to_index: number}} MenuEventMove */
+/** @typedef {{type: 'key', menu_id: string, id: string, key: string, selected_item?: {index: number, value: any, action?: string}}} MenuEventKey */
+/** @typedef {{type: 'search', menu_id: string, query: string}} MenuEventSearch */
+/** @typedef {{type: 'close'}} MenuEventClose */
+
+/** @typedef {MenuEventActivate | MenuEventKey | MenuEventMove | MenuEventSearch | MenuEventClose} MenuEvent */
+
 
 // mpv 定义的
 
 /** 
  * @typedef {Object}    SubprocessResult   mp.command 执行 subprocess 的返回结果
- * @property {string}   error_string
- * @property {boolean}  killed_by_us
+ * @property {string}   error_string    空字符串(正常结束) 或 killed(非正常结束) 或 init(未成功启动)
+ * @property {boolean}  killed_by_us    进程是否由 mpv 杀死，例如播放停止 + playback_only, 或 abort_async_command.
  * @property {number}   status
  * @property {string}   stderr
  * @property {string}   stdout
@@ -340,11 +311,12 @@ else {
  */
 
 /**
- * @typedef     {Object} MpProperty                 mp 的属性
- * @property    {MpPropertyChangeCallback} [_currentCallback]
- * @property    {(callback: MpPropertyChangeCallback) => void} startObserve 开始监听该属性。不能重复监听。
- * @property    {() => void}            stopObserve 停止监听该属性
- * @property    {(default: any) => any} get         获取该属性当前的值
+ * @typedef  {Object}                            MpProperty      mp 的属性
+ * @property {string}                            name            字符串名称
+ * @property {MpPropertyChangeCallback | null}   _currentCallback
+ * @property {(callback: MpPropertyChangeCallback) => void}  startObserve 开始监听该属性。不能重复监听。
+ * @property {() => void}                        stopObserve     停止监听该属性
+ * @property {(default: any) => any}             get             获取该属性当前的值
  */
 
 // #endregion
@@ -357,19 +329,21 @@ else {
 // ----------------------------------------------------------------------------
 
 
-/** 创建一个 mp 属性.@returns {MpProperty} */
+/** 创建一个 mp 属性. @returns {MpProperty} */
 mp.createMpProperty = function (name) {
     return {
+        name: name,
         _currentCallback: null,
         get: function (def) { return mp.get_property_native(name, def) },
+        set: function (value) { mp.set_property_native(name, value) },
         startObserve: function (callback) {
-            if (this.currentCallback) { throw new Error("请先取消上一次的监听", this.currentCallback); }
-            this.currentCallback = runCatchingFunc(callback)
-            mp.observe_property(name, 'native', this.currentCallback)
+            if (this._currentCallback) { throw new Error("请先取消上一次的监听", this._currentCallback); }
+            this._currentCallback = function (name, value) { runCatching(callback, name, value) }
+            mp.observe_property(name, 'native', this._currentCallback)
         },
         stopObserve: function () {
-            if (this.currentCallback) { mp.unobserve_property(this.currentCallback) }
-            this.currentCallback = null
+            if (this._currentCallback) { mp.unobserve_property(this._currentCallback) }
+            this._currentCallback = null
         },
 
     }
@@ -394,6 +368,12 @@ mp.trackList = mp.createMpProperty('track-list')
 mp.sid = mp.createMpProperty('sid')
 /** mp 属性 (number)， 当前播放时间，单位：秒 */
 mp.timePos = mp.createMpProperty('time-pos')
+mp.abLoopA = mp.createMpProperty('ab-loop-a')
+mp.abLoopB = mp.createMpProperty('ab-loop-b')
+/** mp 属性 (string), 画面裁切。"WxH+x+y" 从 x,y 偏移 W, H. "" 为不裁切。"0x0+0+0" 为不裁切且仅用 container crop (不知道是啥). */
+mp.videoCrop = mp.createMpProperty('video-crop')
+mp.width = mp.createMpProperty('width')
+mp.height = mp.createMpProperty('height')
 
 /** 
  * 复制文本到剪切板.
@@ -407,7 +387,7 @@ mp.copyToClipboard = function (text, notify) {
 }
 
 // 显示消息在 mpv 左上角
-mp.showText = function (text, duration) { mp.commandv('show-text', text, (duration || 2000).toString()); }
+mp.showText = function (text, duration) { mp.commandv('show-text', text, (duration || 3500).toString()); }
 
 /** 打印某个对象的内容 */
 mp.dump = function () { dump(arguments) }
@@ -416,10 +396,9 @@ mp.dump = function () { dump(arguments) }
  * 启动子进程执行某个命令。执行失败时抛出异常。
  * @param {string[]} cmd 要执行的命令
  * @param {string} [stdin_data] 要作为新进程的 stdin 的内容。
- * @returns {SubprocessResult} 
+ * @returns {SubprocessResult} 执行成功时返回结果
  */
 mp.commandSubprocess = function (cmd, stdin_data) {
-    /** @type {SubprocessResult} */
     var mpCommand = {
         name: "subprocess",
         playback_only: true, // 没有视频在播放了就结束
@@ -429,15 +408,62 @@ mp.commandSubprocess = function (cmd, stdin_data) {
         args: cmd,
     }
     if (stdin_data) mpCommand.stdin_data = stdin_data
+    /** @type {SubprocessResult} */
     var res = mp.command_native(mpCommand);
-
-    if (!res) throw new Error(istr.subprocessFailed + '\n' + cmd + '\n');
-    if (res.status !== 0) throw new Error(istr.subprocessFailed + "\n" + cmd + "\n\nerror_string: " + res.error_string + "\n\nstderr: " + res.stderr);
-    return res
+    if (!res) throw new Error(istr.subprocessFailed + '\ncmd: ' + cmd.join(' '))
+    else if (res.status !== 0) throw new Error(istr.subprocessFailed + '\ncmd: ' + cmd.join(' ')
+        + (res.killed_by_us ? '\n进程被 mpv 或用户主动杀死。' : '')
+        + '\nerror_string: ' + (res.error_string ? res.error_string : 'N/A')
+        + '\nstderr: ' + (res.stderr ? res.stderr : 'N/A'))
+    else return res
 }
+
+/** 
+ * mp.commandSubprocess 的异步版本。需要传入回调函数. 
+ * @param {(res: SubprocessResult) => void} func 命令执行成功时调用。
+ * @returns {*} 返回一个对象用于终止该命令。
+ */
+mp.commandAsyncSubprocess = function (cmd, func, stdin_data) {
+    var mpCommand = { name: "subprocess", playback_only: true, capture_stdout: true, capture_stderr: true, args: cmd, }
+    if (stdin_data) mpCommand.stdin_data = stdin_data
+    return mp.command_native_async(mpCommand, function (sucess, res, error) {
+        runCatching(function () {
+            if (!sucess) throw new Error(istr.subprocessFailed + '\ncmd: ' + cmd.join(' ') + '\n');
+            else if (res.status !== 0) throw new Error(istr.subprocessFailed + '\ncmd: ' + cmd.join(' ')
+                + (res.killed_by_us ? '\n进程被 mpv 或用户主动杀死。' : '')
+                + '\nerror_string: ' + (res.error_string ? res.error_string : 'N/A')
+                + '\nstderr: ' + (res.stderr ? res.stderr : 'N/A'))
+            else func(res)
+        })
+    });
+}
+
+/** 停止异步命令 */
+mp.abortAsyncCommand = function (cmdId) { mp.abort_async_command(cmdId) }
 
 /** 跳转至指定时间。@param {number} time 时间点，单位秒 */
 mp.seekAbsolute = function (time) { mp.commandv("seek", time, "absolute"); }
+
+/**
+ * 定义某个命令，并注册快捷键。如果有匿名回调，本次快捷键不会覆盖。
+ * 例如对于 mpv 内置命令，默认快捷键会被覆盖，但在 input.conf 中手动指定的不会被覆盖。
+ * @param {string | null}   key     快捷键，可以为 null
+ * @param {string}          name    命令名称.
+ * @param {()=>void}        func    回调
+ * @param {{repeatable?: boolean, scalable?: boolean, complex?: boolean}}  flags   repeatable 持续的按下会触发回调。complex 会给回调传入更多数据
+ */
+mp.addKeyBinding = function (key, name, func, flags) { mp.add_key_binding(key, name, func, flags) }
+
+/**
+ * 同 mp.addKeyBinding 但强制注册快捷键。
+ * @param {string | null}   key     快捷键，可以为 null
+ * @param {string}          name    命令名称.
+ * @param {()=>void}        func    回调
+ * @param {{repeatable?: boolean, scalable?: boolean, complex?: boolean}}  flags   repeatable 持续的按下会触发回调。complex 会给回调传入更多数据
+ */
+mp.addForcedKeyBinding = function (key, name, func, flags) { mp.add_forced_key_binding(key, name, func, flags) }
+
+mp.removeKeyBinding = function (name) { mp.remove_key_binding(name) }
 
 
 /**
@@ -462,8 +488,13 @@ uosc.setButton = function (btnName, btnData) { mp.commandv('script-message-to', 
 
 uosc.showInDirectory = function (filepath) { mp.commandv('script-message-to', 'uosc', 'show-in-directory', filepath); }
 
-/** 向 mp 注册一个消息监听，作为 uosc 菜单的回调。自动为回调包裹 try-catch. */
-uosc.registerMenuCallback = function (name, func) { mp.register_script_message(name, runCatchingFunc(func)) }
+/** 向 mp 注册一个消息监听，作为 uosc 菜单的回调。自动为回调包裹 try-catch. @param {(event:MenuEvent) => void} func */
+uosc.registerMenuCallback = function (name, func) {
+    mp.register_script_message(name, function (jsonStr) {
+        var event = parseJson(jsonStr);
+        if (event) { runCatching(func, event) };
+    })
+}
 
 /** 向 mp 注册一个消息监听，当 uosc 初始化时接收 uosc 版本号。 */
 uosc.registerOnInitialized = function (func) { mp.register_script_message('uosc-version', func) }
@@ -478,7 +509,6 @@ uosc.registerOnInitialized = function (func) { mp.register_script_message('uosc-
 uosc.showText = function (title, text, button, filepath) {
     /** @type {Menu} */
     var menu = {
-        id: SCRIPT_UOSC_MENU_ID_GENERAL_DIALOG,
         title: title,
         callback: [SCRIPT_NAME, 'vst_text_dialog_menu_callback'],
         items: [],
@@ -505,9 +535,8 @@ uosc.showText = function (title, text, button, filepath) {
     if (menu.items.length > 0) menu.selected_index = menu.items.length
 
     uosc.openMenu(menu)
-    uosc.registerMenuCallback('vst_text_dialog_menu_callback', function (jsonStr) {
-        var event = parseJson(jsonStr);
-        if (event && event.type == 'activate') {
+    uosc.registerMenuCallback('vst_text_dialog_menu_callback', function (event) {
+        if (event.type == 'activate') {
             /** @type {{button: TextDialogButton, value: string}} */
             var data = parseJson(event.value);
             if (data.button === 'copy') {
@@ -526,50 +555,47 @@ uosc.showText = function (title, text, button, filepath) {
  * @param {TextDialogButton[]} button 参考 uosc.showText
  */
 uosc.showError = function (err, button) {
-    var formatErrStr = err.stack ? err.stack : (err.name + ": " + err.message);
-    print('showError:\n' + formatErrStr);
+    var formatErrStr = err.name + ": " + err.message;
+    mp.msg.info('捕捉到异常', err, err.stack)
     uosc.showText(istr.error, formatErrStr, button);
+}
+
+/** 使用传入的参数执行 ffmpeg. 返回 stdout @param {string[]} args @returns {string} */
+ffmpeg.command = function (args, stdin_data) {
+    mp.msg.verbose('执行 ffmpeg', args.join(' '))
+    return mp.commandSubprocess(['ffmpeg'].concat(args), stdin_data).stdout
+}
+
+/** ffmpeg.command 的异步版本。 @param {(SubprocessResult) => void} func 执行成功后回调。@returns {*} 用于终止命令的对象 */
+ffmpeg.commandAsync = function (args, func, stdin_data) {
+    mp.msg.verbose('执行（异步） ffmpeg', args.join(' '))
+    return mp.commandAsyncSubprocess(['ffmpeg'].concat(args), func, stdin_data)
 }
 
 /**
  * 提取指定视频文件中的字幕内容文本。
- * @param {string}  codec       字幕在原文件中的编码方式
+ * @param {string}  outFormat   字幕在原文件中的编码方式
  * @param {string}  filepath    视频文件路径
  * @param {number}  trackId     external = false 时，字幕对应的轨道
  * @returns {string}
  */
-ffmpeg.extractSubTrackFromVideo = function (codec, filepath, trackId) {
-    var outFormat = SUPPORTED_CODECS[codec]
-    if (!outFormat) throw new Error(istr.formatUnsupported + codec)
-    var res = mp.commandSubprocess(['ffmpeg', '-y', '-v', 'quiet', '-i', filepath, '-map', '0:' + trackId, '-f', outFormat.slice(1), '-'])
-    return res.stdout
+ffmpeg.extractSubTrackFromVideo = function (outFormat, filepath, trackId) {
+    return ffmpeg.command(['-y', '-v', 'quiet', '-i', filepath, '-map', '0:' + trackId, '-f', outFormat, '-'])
 }
 
 /** 将给定字幕文本转换为 srt 格式的字幕文本。@returns {string} */
-ffmpeg.formatSubToSrt = function (subText) {
-    var res = mp.commandSubprocess(['ffmpeg', '-y', '-v', 'quiet', '-i', 'pipe:', '-f', 'srt', '-'], subText)
-    return res.stdout
-}
+ffmpeg.formatSubToSrt = function (subText) { return ffmpeg.command(['-y', '-v', 'quiet', '-i', 'pipe:', '-f', 'srt', '-'], subText) }
 
-/** 为函数包裹 try catch。@returns {() => any} 返回一个函数而非直接执行。需要手动调用执行。 */
-function runCatchingFunc(func) {
-    return function () {
-        try { return func.apply(this, arguments) }
-        catch (err) {
-            uosc.showError(err, ['copy', 'ok'])
-            return undefined
-        }
+/** 为函数包裹 try catch 并执行。第二个往后的参数会传入 func. */
+function runCatching(func) {
+    var args = []
+    for (var i = 1; i < arguments.length; i++) { args.push(arguments[i]) }
+    try { return func.apply(this, args) }
+    catch (err) {
+        uosc.showError(err, ['copy', 'ok'])
+        return undefined
     }
 }
-
-/** 返回当前时间对应正在或即将显示的 subLine @param {SubLine[]} subLines @param {number} currTimePos @returns {SubLine|null} */
-function findSelectedSubLine(subLines, currTimePos) {
-    for (var i = 0; i < subLines.length; i++) {
-        if (subLines[i].endTime > currTimePos) { return subLines[i] }
-    }
-    return null
-}
-
 
 /** 包括 try catch 的 JSON.parse */
 function parseJson(jsonStr) {
@@ -577,6 +603,18 @@ function parseJson(jsonStr) {
         return JSON.parse(jsonStr);
     } catch (e) {
         print("json.parse 时出现错误：" + e);
+        return null;
+    }
+}
+
+/** 将数值限制在 [min, max] 区间 */
+function clamp(val, min, max) { return Math.max(min, Math.min(max, val)); }
+
+/** 安全读取本地文本文件。 @returns {string | null} */
+function readFile(path) {
+    try { return mp.utils.read_file(path); }
+    catch (e) {
+        print(e)
         return null;
     }
 }
@@ -637,14 +675,58 @@ function cleanText(text) {
         .trim();
 }
 
-/** 安全读取本地文本文件。 @returns {string | null} */
-function readFile(path) {
-    try { return mp.utils.read_file(path); }
-    catch (e) {
-        print(e)
-        return null;
+
+// #endregion
+
+
+// #endregion
+
+
+
+// #region 当前脚本的公共部分
+
+var SCRIPT_CMD_SHOW_SUBTITLE_TRACKS = "show_sub_tracks";
+var SCRIPT_CMD_SHOW_SUBTITLE_CONTENT = "show_sub_content";
+var SCRIPT_UOSC_BTN_SHOW_SUBTITLE_TRACKS = "view_sub_texts"
+
+/** 支持的字幕编码格式. 属性名为 codec, 对应的值为文件后缀 */
+var SUPPORTED_CODECS = { subrip: '.srt', ass: '.ass' }
+
+
+
+/**
+ * 
+ * @typedef {Object}    SubTrackInfo    一个字幕轨道的信息
+ * @property {number}   id          mpv 为其分配的轨道 id, 在一个类型（如字幕）中应该唯一。
+ * @property {boolean}  selected    是否为当前显示的字幕轨道
+ * @property {number}   ffIndex     通常用于 ffmpeg 的 stream index. 如果 demuxer 不是 libavformat 该值可能错误。mkv 一般正确。
+ * @property {string}   title       标题
+ * @property {string}   lang        语言
+ * @property {boolean}  external    是否为外部文件
+ * @property {string | undefined} externalFilename 外部文件名
+ * @property {string}   codec       编码类型
+ */
+
+
+/**
+ * @typedef {Object}    SubLine     字幕文件中的一条字幕
+ * @property {number}   startTime   起始时间，单位秒
+ * @property {number}   endTime     结束时间，单位秒
+ * @property {string}   text        字幕文本
+ * @property {number}   splitCount  （按行）拆分成了几个 item
+ * @property {number}   [itemIndex] 在 menu.items 中的 index. 便于选中特定时间的那一行
+ */
+
+
+
+/** 返回当前时间对应正在或即将显示的 subLine @param {SubLine[]} subLines @param {number} currTimePos @returns {SubLine|null} */
+function findSelectedSubLine(subLines, currTimePos) {
+    for (var i = 0; i < subLines.length; i++) {
+        if (subLines[i].endTime > currTimePos) { return subLines[i] }
     }
+    return null
 }
+
 
 /**
  * 将字幕原始文本内容保存到当前视频同目录下。命名：视频名称.语言.字幕格式后缀
@@ -691,8 +773,10 @@ function getRawTextOfSubTrack(track) {
     // 自带的 mp.read_file 只支持 utf-8, 导致带 bom 的 utf-16 无法正常读取。只能借助 ffmpeg 了。
     var filepath = !track.external ? mp.path.get() : track.externalFilename
     var ffIndex = !track.external ? track.ffIndex : 0
+    var outFormat = SUPPORTED_CODECS[track.codec]
     if (!filepath) throw new Error(istr.videoPathNotFound);
-    return ffmpeg.extractSubTrackFromVideo(track.codec, filepath, ffIndex)
+    if (!outFormat) throw new Error(istr.formatUnsupported + track.codec)
+    return ffmpeg.extractSubTrackFromVideo(outFormat.slice(1), filepath, ffIndex)
 }
 
 /**
@@ -826,13 +910,10 @@ function findTrackById(trackId) {
 
 
 // #region UI 交互与菜单展示
-// ----------------------------------------------------------------------------
-// UI 交互与菜单展示
-// ----------------------------------------------------------------------------
 
 // 第一步：展示字幕轨道列表菜单
 function showSubTracksMenu() {
-    runCatchingFunc(function () {
+    runCatching(function () {
         var tracks = getSubTracks();
         if (tracks.length === 0) {
             uosc.showText('', istr.noSubtrack, ['ok']);
@@ -841,7 +922,6 @@ function showSubTracksMenu() {
 
         /** @type {Menu} 菜单。显示字幕轨道让用户选择。 */
         var menu = {
-            id: SCRIPT_UOSC_MENU_ID_SELECT_TRACK,
             type: "sub_tracks_menu_type", // 用于 update-menu
             title: istr.selectTrack,
             footnote: istr.supportFormat + "subrip(.srt), ass",
@@ -860,15 +940,14 @@ function showSubTracksMenu() {
         }
 
         uosc.openMenu(menu)
-        uosc.registerMenuCallback('vst_sub_tracks_menu_callback', function (jsonStr) {
-            var event = parseJson(jsonStr);
-            if (event && event.type == 'activate') {
+        uosc.registerMenuCallback('vst_sub_tracks_menu_callback', function (event) {
+            if (event.type == 'activate') {
                 /** @type {SubTrackInfo} */
                 var data = parseJson(event.value)
                 showSubtitleLines(data);
             }
         })
-    })()
+    })
 }
 
 // 第二步：加载字幕，并显示文本行列表菜单
@@ -887,7 +966,6 @@ function showSubtitleLines(track) {
 
     /** @type {Menu} 显示全部字幕文本的菜单 */
     var menu = {
-        id: SCRIPT_UOSC_MENU_ID_SUB_LINES,
         type: "sub_lines_menu_type", // 用于 update-menu
         title: track.title + ' ' + istr.typeToSearch,
         footnote: istr.fastScrollHint,
@@ -942,9 +1020,7 @@ function showSubtitleLines(track) {
 
     // 不用 updateMenu 而用 openMenu, 以便 selected_index 生效
     uosc.openMenu(menu);
-    uosc.registerMenuCallback('vst_sub_lines_menu_callback', function (jsonStr) {
-        var event = parseJson(jsonStr);
-        if (!event) return;
+    uosc.registerMenuCallback('vst_sub_lines_menu_callback', function (event) {
         if (event.type == 'activate') {
             /** @type {{index: number} | {button: ('file'|'copy')}} */
             var data = parseJson(event.value);
