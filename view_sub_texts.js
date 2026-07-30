@@ -31,66 +31,7 @@ mpv 文档，单页面：https://mpv.io/manual/master
 javascript 脚本（大部分参考上面 Lua 脚本）：https://mpv.io/manual/master/#javascript
 几种字幕格式：https://www.quicklrc.com/subtitle-formats
 ass 字幕格式规范：https://github.com/weizhenye/ASS/wiki/ASS-字幕格式规范
-
-
-# 向外暴露自身
-1. 向 mpv 范围内导出一个名称，可以通过 mpv 的 command 使用，或 input.conf 中绑定快捷键。
-`mp.add_key_binding(null, SCRIPT_CMD_SHOW_SUBTITLE_TRACKS, showSubTracksMenu);`
-在 input.conf 中绑定：`Ctrl+S script-binding 脚本名/命令名称`。注意大写 S 表示 shift + s.
-
-2. 向 uosc 的底部控制条导出一个按钮名称，这样用户后续可以手动向 script-opts/usoc.conf 中添加按钮 `button:自定义名称` 而不用写一长串了。
-https://github.com/tomasklaen/uosc/wiki#set-button-name-data_json
-`mp.commandv('script-message-to', 'uosc', 'set-button', 'btn-name', JSON.stringify({配置});`
-
-3. 在外部调用自身命令
-`mp.commandv('script-message-to', 脚本名, '命令名称);`
-
-
-# 从 mp 获取属性：
-可以通过 mp.get_property_ 获取的属性：https://mpv.io/manual/master/#property-list 。
-另外 options(https://mpv.io/manual/master/#options) 也可以作为属性获取，
-但有一些区别： https://mpv.io/manual/master/#inconsistencies-between-options-and-properties
-
-mp.observe_property 监听属性变化？
-
-注意 track-list/N/id 和 track-list/N/src-id 有区别。前者是 mpv 分配的，后者是源文件里的，可能没有。
-
-
-# 执行外部二进制文件
-    r = mp.command_native({
-        name: "subprocess",
-        args: ["ffmpeg", "-help"],
-        playback_only: true, // 没有视频在播放了就结束
-        capture_stdout : true, // 如果设置为 true, 不会直接输出而是保存到 r.stdout 中。
-        apture_stderr : true,
-
-    })
-    if (r) {
-        // print("r.stdout: " + r.stdout) // 没管 stderr
-    }
-
-经过测试，flatpak 的 mpv 也可以获取到外部文件例如 ffmpeg. flathub 标注了这个程序可以获取全部文件。
-
-
-# uosc 菜单的使用 https://github.com/tomasklaen/uosc/wiki/Menu-API#callback-mode
-1. 使用 open-menu 显示菜单，传入 menu
-    mp.commandv('script-message-to', 'uosc', 'open-menu', JSON.stringify(menu))
-2. menu.callback 指定回调，然后注册菜单事件监听回调
-    mp.register_script_message('menu-event', function (jsonStr) {...})
-3. 显示按钮（action）
-    menu.item_actions 指定所有 item 的按钮，或 item.actions 指定单个 item 的按钮。
-    同样使用回调模式，回调中 event.action 为 item 中指定的 action.name.
-    图标使用 https://fonts.google.com/icons 中的名称，小写 + 下划线连接。
-4. 特殊图标： spinner. 可以用于显示‘加载中’占位项
-5. 使用 update-menu 更新菜单内容。同样将 menu 转为 json 传入，注意保持 menu.type 一致。
-6. 子菜单
-    如果 menu.items 的项不是 Item 而是 Submenu，即指定 {.items} 而不是 {.value}，
-    那么点击会在右侧显示子菜单，原菜单左移。
-    但是这种方法点击子菜单时没有回调，所以没法用于点击子菜单后立即更新内容，只能点击子菜单再点击子菜单中的选项触发更新。
-7. 多行文本
-    单个 Item 高度固定，多行文字显示不全。可以拆分成多个 Item, 并设置最后一个 item.separator = true. 
-    这样看起来像在一行。不过 action 还是按单个 Item 来的所以注意给每个 Item 设置相同的完整 value.
-
+uosc 菜单使用：https://github.com/tomasklaen/uosc/wiki/Menu-API
 
 
 # 注意事项
@@ -112,7 +53,6 @@ mp.observe_property 监听属性变化？
     实现方案：
     1. uosc.selectMenuItem() 仅支持键盘控制。 
     2. uosc.openMenu() + menu.selected_index. 相当于每次重新打开，还没试过
-
 
 */
 
@@ -1011,7 +951,7 @@ function showSubtitleLines(track) {
             var lastItemIndex = menu.items.length - 1
             subLine.itemIndex = lastItemIndex
             menu.items[lastItemIndex].separator = true
-            menu.items[lastItemIndex].hint = formatTimeFloat(subLine.startTime) + ' -- > ' + formatTimeFloat(subLine.endTime);
+            menu.items[lastItemIndex].hint = i + ' | ' + formatTimeFloat(subLine.startTime) + ' -- > ' + formatTimeFloat(subLine.endTime);
         }
     }
 
