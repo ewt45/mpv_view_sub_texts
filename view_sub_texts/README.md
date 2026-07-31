@@ -1,6 +1,6 @@
 # mpv uosc 字幕文本浏览脚本
-https://github.com/ewt45/mpv_view_sub_texts \
-![ezgif-40eadd3fe9cb4f5d.avif](https://files.seeusercontent.com/2026/07/22/zMx8/ezgif-40eadd3fe9cb4f5d.avif) \
+https://github.com/ewt45/mpv-scripts/view_sub_texts \
+![view_sub_texts.avif](https://files.seeusercontent.com/2026/07/31/jY2s/view_sub_texts.avif) \
 在 mpv 中使用 uosc 菜单列出字幕轨道，点击可显示全部文本，支持搜索，复制，保存文件和点击跳转。 
 对于播放器设置的首选字幕轨道，显示其内容时会同步高亮当前行。
 - 平台：Linux

@@ -1,3 +1,19 @@
+/* =======================================================
+# mpv 视频片段剪切脚本
+https://github.com/ewt45/mpv-scripts/video_cutter \
+![video_cutter.avif](https://files.seeusercontent.com/2026/07/31/Wl8k/video_cutter.avif) \
+剪切视频片段。支持缩放，裁切画面，导出 mkv/gif/avif 文件。界面借助 uosc 显示。
+- 平台：Linux
+- 界面语言：英文，中文。（根据环境变量 `LANG` 决定）
+- 依赖：ffmpeg, uosc
+
+## 使用方式
+1. 下载 `video_cutter.js` 放到 mpv 的脚本目录。
+2.  绑定快捷键。示例：在 `input.conf` 中  
+   `c script-binding video_cutter/show_ui`
+3. 播放视频时，按下快捷键显示操作菜单，设置起始和结束位置，并导出文件。
+ =======================================================*/
+
 /*
 // TODO 
 - 获取当前转码进度：无法实现。mpv 脚本中不支持实时接收输出，-progress 可以指定文件但内容会不断拼接而非覆盖。除非 sh？
@@ -127,7 +143,7 @@ else {
     istr.cropKeysInfo = 'Arrow keys (←↑→↓): Move the top-left corner of the crop rectangle.\nTAB: Switch to moving the bottom-right corner.\nESC: Exit cropping.'
     istr.resizeHint = 'Input format: WIDTH:HEIGHT . Examples: '
     istr.sizeTitles = ['Width: ', '  Height: '],
-    istr.inputFormatError = 'Wrong Input format.'
+        istr.inputFormatError = 'Wrong Input format.'
 }
 
 // #endregion
@@ -678,7 +694,7 @@ function cutToFile(format) {
         ffmpegCmdId = null
     })
 
-    menuProcessing.items[0].title = istr.exporting + outPath
+    menuProcessing.items[0].title = outPath
     uosc.openMenu(menuProcessing)
     uosc.registerMenuCallback('vc_process_menu_callback', function (event) {
         if (event.action === 'stop') {
@@ -770,7 +786,7 @@ var menuProcessing = {
     keep_open: true,
     type: ' vc_process_menu_type',
     callback: [SCRIPT_NAME, 'vc_process_menu_callback'],
-    items: [{ title: '', icon: 'spinner', actions: [{ name: 'stop', icon: 'stop_circle', label: istr.abort }] },],
+    items: [{title: '', selectable: false}, { title: istr.exporting, icon: 'spinner', actions: [{ name: 'stop', icon: 'stop_circle', label: istr.abort }] },],
 }
 
 /** 启动 ffmpeg 后设置此属性。不为 null 时代表 ffmpeg 正在执行中。 */
