@@ -4,6 +4,8 @@
 
 - ts react 库？ https://github.com/mpv-easy/mpv-easy
 - 记忆窗口大小和位置？
+
+- README
 */
 
 
@@ -28,9 +30,12 @@ var uosc = uosc || {}
 
 /** 支持多语言的文本。 */
 var istr = {
+    // 标题
     finish: '完成',
     error: '错误',
     selectTrack: '选择一个字幕轨道以浏览其内容',
+    videoCut: '剪切视频片段',
+    // 按钮
     ok: '确定',
     saveSubFile: '导出字幕文件到视频目录',
     copySubAllToClipboard: '复制全部字幕文本到剪切板',
@@ -38,12 +43,19 @@ var istr = {
     openFileDir: '打开文件所在目录',
     seekTime: '跳转至当前时间',
     viewSubText: '浏览字幕文本',
+    setCutTimes: ['设置剪切起点', '设置剪切终点'],
+    resize: '缩放',
+    beginCrop: '开始裁切画面',
+    reset: '重置',
+    exportAs: '导出为...',
+    abort: '中止',
+    // 文本
     copied: '已复制到剪切板。',
     subprocessFailed: '子进程执行失败！',
     formatUnsupported: '不支持的编码格式: ',
     videoPathNotFound: '无法获取视频本地路径',
     subTrackNotFound: '无法获取该字幕轨道',
-    savedToVideoDir: '已成功保存至视频同目录: ',
+    savedToVideoDir: '已成功保存至视频同目录: \n',
     noPermissionAndCopied: '由于没有文件写入权限，已将文本复制到剪切板。',
     noSubtrack: '没有字幕轨道。请尝试其他视频文件或添加外部字幕文件。',
     supportFormat: '支持编码格式: ',
@@ -53,7 +65,19 @@ var istr = {
     loading: '正在加载中...',
     noTextParsed: '解析失败：未能从该轨道提取出有效文本',
     fastScrollHint: '当行数较多时，可以用 PageUp/PageDown 快速滚动。',
-
+    noCutTime: '未设置时间',
+    setCutTimeFirst: '请先设置起始时间和结束时间',
+    exporting: '正在导出，请耐心等待...\n',
+    aborted: '操作已中止。',
+    auto: '自动',
+    editCrops: ['编辑裁切矩形左上角', '编辑裁切矩形右下角'],
+    videoCutHint: '点击按钮 A/B 设置起点/终点，然后导出文件。',
+    action: '操作',
+    cannotCropOrResize: '不支持裁切和缩放',
+    cropKeysInfo: '方向键←↑→↓: 移动裁切矩形的左上角。\nTAB: 切换为移动裁切矩形的右下角。\nESC: 退出裁切。',
+    resizeHint: '输入格式: 宽度:高度。示例: ',
+    sizeTitles: ['宽度: ', '  高度: '],
+    inputFormatError: '输入格式错误。',
 }
 
 var systemLang = mp.utils.getenv('LANG')
@@ -62,6 +86,7 @@ else {
     istr.finish = 'Finished'
     istr.error = 'Error'
     istr.selectTrack = 'Select a track to view its content'
+    istr.videoCut = 'Video Cut'
     istr.ok = 'Ok'
     istr.saveSubFile = 'Save as file'
     istr.copySubAllToClipboard = 'Copy all to clipboard'
@@ -69,12 +94,18 @@ else {
     istr.openFileDir = 'Open directory'
     istr.seekTime = 'Jump to the start time of this line'
     istr.viewSubText = 'View sub text'
+    istr.setCutTimes = ['Set cut start time', 'Set cut end time']
+    istr.resize = 'Resize'
+    istr.beginCrop = 'Begin cropping'
+    istr.reset = 'Reset'
+    istr.exportAs = 'Export as...'
+    istr.abort = 'Abort'
     istr.copied = 'Copied to clipboard.'
     istr.subprocessFailed = 'Subprocess failed!'
     istr.formatUnsupported = 'Format unsupported: '
     istr.videoPathNotFound = 'Cannot find video local path'
     istr.subTrackNotFound = 'Cannot find the sub track'
-    istr.savedToVideoDir = 'Saved to video dir: '
+    istr.savedToVideoDir = 'Saved to video dir: \n'
     istr.noPermissionAndCopied = 'There is no write permission, so content is copied to clipboard.'
     istr.noSubtrack = 'No subtitle track. Please try other videos or add external subtitle files.'
     istr.supportFormat = 'Supported format: '
@@ -84,6 +115,19 @@ else {
     istr.loading = 'Loading...'
     istr.noTextParsed = 'Parsing failed. No valid text in this track.'
     istr.fastScrollHint = 'Press PageUp/PageDown to fast scroll if there are too many lines.'
+    istr.noCutTime = 'time not set'
+    istr.setCutTimeFirst = 'Please set start and end time first.'
+    istr.exporting = 'Exporting. Please wait patiently...\n'
+    istr.aborted = 'Aborted.'
+    istr.auto = 'Auto'
+    istr.editCrops = ['Editing top-left of the crop rect', 'Editing bottom-right of the crop rect']
+    istr.videoCutHint = 'Click A/B button to set start/end time and then export file.'
+    istr.action = 'Action'
+    istr.cannotCropOrResize = 'Crop and resize not supported.'
+    istr.cropKeysInfo = 'Arrow keys (←↑→↓): Move the top-left corner of the crop rectangle.\nTAB: Switch to moving the bottom-right corner.\nESC: Exit cropping.'
+    istr.resizeHint = 'Input format: WIDTH:HEIGHT . Examples: '
+    istr.sizeTitles = ['Width: ', '  Height: '],
+    istr.inputFormatError = 'Wrong Input format.'
 }
 
 // #endregion
@@ -586,18 +630,18 @@ function generateDataString() {
     var dataStr = ''
     var a = mp.abLoopA.get()
     var b = mp.abLoopB.get()
-    var aStr = (typeof a === 'number') ? formatTimeFloat(a) : '请设置起始时间'
-    var bStr = (typeof b === 'number') ? formatTimeFloat(b) : '请设置结束时间'
-    dataStr += '🎬 时间: ' + aStr + ' --> ' + bStr
+    var aStr = (typeof a === 'number') ? formatTimeFloat(a) : istr.noCutTime
+    var bStr = (typeof b === 'number') ? formatTimeFloat(b) : istr.noCutTime
+    dataStr += '🎬 ' + aStr + ' --> ' + bStr
 
     if (outputSize.width > 0 || outputSize.height > 0) {
-        var outWidthStr = outputSize.width <= 0 ? '自动' : outputSize.width
-        var outHeightStr = outputSize.height <= 0 ? '自动' : outputSize.height
-        dataStr += ',\u3000 📐 宽高: ' + outWidthStr + ':' + outHeightStr
+        var outWidthStr = outputSize.width <= 0 ? istr.auto : outputSize.width
+        var outHeightStr = outputSize.height <= 0 ? istr.auto : outputSize.height
+        dataStr += ',\u3000 📐 ' + outWidthStr + ':' + outHeightStr
     }
 
     var cropStr = mp.videoCrop.get()
-    if (cropStr) dataStr += ',\u3000 ✂️ 裁切: ' + cropStr
+    if (cropStr) dataStr += ',\u3000 ✂️ ' + cropStr
     return dataStr
 }
 
@@ -608,9 +652,9 @@ function cutToFile(format) {
     var b = mp.abLoopB.get();
     var inPath = mp.path.get();
 
-    if (typeof a !== 'number' || typeof b !== 'number') throw new Error('请先设置起始时间和结束时间')
-    if (a >= b) throw new Error('请确保起始时间小于结束时间')
-    if (!inPath || inPath.indexOf("http") === 0) throw new Error('无法获取视频文件路径')
+    if (typeof a !== 'number' || typeof b !== 'number') throw new Error(istr.setCutTimeFirst)
+    if (a >= b) { a = mp.abLoopB.get(); b = mp.abLoopA.get(); }
+    if (!inPath || inPath.indexOf("http") === 0) throw new Error(istr.videoPathNotFound)
 
     var outPath = mp.utils.split_path(inPath)[0] + mp.filename.noExt.get() + '_cut.' + format
     var cropRect = getCurrentCropRect(mp.width.get(), mp.height.get())
@@ -630,17 +674,17 @@ function cutToFile(format) {
     else if (format === 'avif') { ffArgs = ffArgs.concat(['-vf', vfArgs.join(','), '-c:v', 'libaom-av1', '-cpu-used', '6', '-crf', '30', '-b:v', '0', '-an', '-pix_fmt', 'yuv420p', outPath]); }
 
     ffmpegCmdId = ffmpeg.commandAsync(ffArgs, function (result) {
-        uosc.showText('剪切视频片段', "导出成功:\n" + outPath, ['open-dir', 'ok'], outPath);
+        uosc.showText(istr.videoCut, istr.savedToVideoDir + outPath, ['open-dir', 'ok'], outPath);
         ffmpegCmdId = null
     })
 
-    menuProcessing.items[0].title = '正在导出，请耐心等待...\n' + outPath
+    menuProcessing.items[0].title = istr.exporting + outPath
     uosc.openMenu(menuProcessing)
     uosc.registerMenuCallback('vc_process_menu_callback', function (event) {
         if (event.action === 'stop') {
             if (ffmpegCmdId != null) { mp.abortAsyncCommand(ffmpegCmdId) }
             ffmpegCmdId = null
-            uosc.showText(istr.finish, '导出操作已中止。', ['ok'])
+            uosc.showText(istr.finish, istr.aborted, ['ok'])
         }
     })
 }
@@ -653,7 +697,7 @@ function getCurrentCropRect(maxWidth, maxHeight) {
     return { left: oldCrop.x, top: oldCrop.y, right: oldCrop.x + oldCrop.w, bottom: oldCrop.y + oldCrop.h }
 }
 
-/** 更新裁切矩形。参数为变化的像素值，isLeftTop 代表修改左上还是右下。。 @param {number} dw @param {number} dh @param {number} dx @param {number} dy  */
+/** 更新裁切矩形。参数为变化的像素值，isLeftTop 代表修改左上还是右下。 @param {number} dx @param {number} dy @param {boolean} isLeftTop   */
 function updateVideoCrop(dx, dy, isLeftTop) {
     var maxWidth = mp.width.get()
     var maxHeight = mp.height.get()
@@ -664,11 +708,11 @@ function updateVideoCrop(dx, dy, isLeftTop) {
     if (isLeftTop) {
         rect.left = clamp(rect.left + dx, 0, maxWidth - 1)
         rect.top = clamp(rect.top + dy, 0, maxHeight - 1)
-        mp.showText('编辑裁切矩形左上角' + ': ' + rect.left + ',' + rect.top)
+        mp.showText(istr.editCrops[0] + ': ' + rect.left + ',' + rect.top)
     } else {
         rect.right = clamp(rect.right + dx, 1, maxWidth)
         rect.bottom = clamp(rect.bottom + dy, 1, maxHeight)
-        mp.showText('编辑裁切矩形右下角' + ': ' + (rect.right - maxWidth) + ',' + (rect.bottom - maxHeight))
+        mp.showText(istr.editCrops[1] + ': ' + (rect.right - maxWidth) + ',' + (rect.bottom - maxHeight))
     }
 
     cropStr = (rect.right - rect.left) + 'x' + (rect.bottom - rect.top) + '+' + rect.left + '+' + rect.top
@@ -693,28 +737,28 @@ function parseSizeInputStr(str) {
 
 /** @type {Menu} */
 var menuMain = {
-    title: '剪切视频片段',
-    footnote: '点击按钮 A/B 设置起点/终点，然后导出想要的格式。',
+    title: istr.videoCut,
+    footnote: istr.videoCutHint,
     type: ' vc_buttons_menu_type',
     callback: [SCRIPT_NAME, 'vc_buttons_menu_callback'],
     keep_open: true,
     items: [
         { title: '', selectable: false },
         {
-            title: '操作', value: 'button-action', actions: [
-                { name: 'a', icon: 'A', label: '设置剪切起点' },
-                { name: 'b', icon: 'B', label: '设置剪切终点' },
-                { name: 'resize', icon: 'aspect_ratio', label: '修改输出宽高' },
-                { name: 'crop', icon: 'crop', label: '开始裁切画面' },
-                { name: 'clear', icon: 'backspace', label: '重置' },
+            title: istr.action, value: 'button-action', actions: [
+                { name: 'a', icon: 'A', label: istr.setCutTimes[0] },
+                { name: 'b', icon: 'B', label: istr.setCutTimes[1] },
+                { name: 'resize', icon: 'aspect_ratio', label: istr.resize },
+                { name: 'crop', icon: 'crop', label: istr.beginCrop },
+                { name: 'clear', icon: 'backspace', label: istr.reset },
             ]
         },
         {
             callback: [SCRIPT_NAME, 'vc_buttons_menu_callback'],
-            title: '导出', items: [
-                { title: '导出为 mkv', value: 'export-mkv', hint: '不支持裁切和缩放' },
-                { title: '导出为 gif', value: 'export-gif' },
-                { title: '导出为 avif', value: 'export-avif' },
+            title: istr.exportAs, items: [
+                { title: 'mkv', value: 'export-mkv', hint: istr.cannotCropOrResize },
+                { title: 'gif', value: 'export-gif' },
+                { title: 'avif', value: 'export-avif' },
             ],
         },
     ],
@@ -722,11 +766,11 @@ var menuMain = {
 
 /** @type {Menu} */
 var menuProcessing = {
-    title: '剪切视频片段',
+    title: istr.videoCut,
     keep_open: true,
     type: ' vc_process_menu_type',
     callback: [SCRIPT_NAME, 'vc_process_menu_callback'],
-    items: [{ title: '正在导出，请耐心等待...', icon: 'spinner', actions: [{ name: 'stop', icon: 'stop_circle', label: '中止导出' }] },],
+    items: [{ title: '', icon: 'spinner', actions: [{ name: 'stop', icon: 'stop_circle', label: istr.abort }] },],
 }
 
 /** 启动 ffmpeg 后设置此属性。不为 null 时代表 ffmpeg 正在执行中。 */
@@ -745,7 +789,7 @@ function showButtons() {
         return
     }
     if (isCropping) {
-        uosc.showText('正在裁切画面', '使用方向键上下左右编辑裁切矩形的左上角。\n使用 TAB 键切换为编辑裁切矩形的左上角。\n使用 ESC 键退出裁切。', ['ok'])
+        uosc.showText(istr.videoCut, istr.cropKeysInfo, ['ok'])
         return
     }
 
@@ -786,14 +830,14 @@ function buttonAction(action) {
             search_suggestion: outputSize ? (outputSize.width + ':' + outputSize.height) : '',
             on_search: 'callback',
             callback: [SCRIPT_NAME, 'size_input_menu_callback'],
-            items: [{ title: '', selectable: false }, { title: '输入格式: 宽度:高度。示例: ' + oriSize.width + ':' + oriSize.height + '\u3000 600:-1', selectable: false, muted: true }, { title: '确定', value: 'ok', align: 'center' }],
+            items: [{ title: '', selectable: false }, { title: istr.resizeHint + oriSize.width + ':' + oriSize.height + '\u3000 600:-1', selectable: false, muted: true }, { title: istr.ok, value: 'ok', align: 'center' }],
         }
         uosc.openMenu(menuInput)
         uosc.registerMenuCallback('size_input_menu_callback', function (event) {
             if (event.type === 'search') {
                 outputSize = parseSizeInputStr(event.query)
-                if (outputSize) { menuInput.items[0].title = '宽度: ' + (outputSize.width === -1 ? '自动' : outputSize.width) + ', 高度: ' + (outputSize.height === -1 ? '自动' : outputSize.height) }
-                else { menuInput.items[0].title = '输入格式错误。' }
+                if (outputSize) { menuInput.items[0].title = istr.sizeTitles[0] + (outputSize.width === -1 ? istr.auto : outputSize.width) + istr.sizeTitles[1] + (outputSize.height === -1 ? istr.auto : outputSize.height) }
+                else { menuInput.items[0].title = istr.inputFormatError }
                 uosc.updateMenu(menuInput)
             }
             else if (event.type === 'activate' && event.value === 'ok') { uosc.closeMenu() }
@@ -801,10 +845,10 @@ function buttonAction(action) {
         })
     }
     else if (action === 'crop') {
-        uosc.showText('正在裁切画面', '使用方向键上下左右编辑裁切矩形的左上角。\n使用 TAB 键切换为编辑裁切矩形的左上角。\n使用 ESC 键退出裁切。', ['ok'])
+        uosc.showText(istr.videoCut, istr.cropKeysInfo, ['ok'])
         // 代表当前操作左上还是右下的坐标
         var isLeftTop = true
-        mp.showText(isLeftTop ? '编辑裁切矩形左上角' : '编辑裁切矩形右下角');
+        mp.showText(isLeftTop ? istr.editCrops[0] : istr.editCrops[1]);
 
         // 注册快捷键。退出时取消注册
         isCropping = true
@@ -812,7 +856,7 @@ function buttonAction(action) {
         mp.addForcedKeyBinding('RIGHT', 'cropping-move-right', function () { updateVideoCrop(4, 0, isLeftTop) }, { repeatable: true })
         mp.addForcedKeyBinding('UP', 'cropping-move-up', function () { updateVideoCrop(0, -4, isLeftTop) }, { repeatable: true })
         mp.addForcedKeyBinding('DOWN', 'cropping-move-down', function () { updateVideoCrop(0, 4, isLeftTop) }, { repeatable: true })
-        mp.addForcedKeyBinding('TAB', 'cropping-switch', function () { isLeftTop = !isLeftTop; mp.showText(isLeftTop ? '编辑裁切矩形左上角' : '编辑裁切矩形右下角'); })
+        mp.addForcedKeyBinding('TAB', 'cropping-switch', function () { isLeftTop = !isLeftTop; mp.showText(isLeftTop ? istr.editCrops[0] : istr.editCrops[1]); })
         mp.addForcedKeyBinding('ESC', 'cropping-exit', removeCropKeyBinding)
     }
 }

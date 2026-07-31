@@ -77,9 +77,12 @@ var uosc = uosc || {}
 
 /** 支持多语言的文本。 */
 var istr = {
+    // 标题
     finish: '完成',
     error: '错误',
     selectTrack: '选择一个字幕轨道以浏览其内容',
+    videoCut: '剪切视频片段',
+    // 按钮
     ok: '确定',
     saveSubFile: '导出字幕文件到视频目录',
     copySubAllToClipboard: '复制全部字幕文本到剪切板',
@@ -87,12 +90,19 @@ var istr = {
     openFileDir: '打开文件所在目录',
     seekTime: '跳转至当前时间',
     viewSubText: '浏览字幕文本',
+    setCutTimes: ['设置剪切起点', '设置剪切终点'],
+    resize: '缩放',
+    beginCrop: '开始裁切画面',
+    reset: '重置',
+    exportAs: '导出为...',
+    abort: '中止',
+    // 文本
     copied: '已复制到剪切板。',
     subprocessFailed: '子进程执行失败！',
     formatUnsupported: '不支持的编码格式: ',
     videoPathNotFound: '无法获取视频本地路径',
     subTrackNotFound: '无法获取该字幕轨道',
-    savedToVideoDir: '已成功保存至视频同目录: ',
+    savedToVideoDir: '已成功保存至视频同目录: \n',
     noPermissionAndCopied: '由于没有文件写入权限，已将文本复制到剪切板。',
     noSubtrack: '没有字幕轨道。请尝试其他视频文件或添加外部字幕文件。',
     supportFormat: '支持编码格式: ',
@@ -102,7 +112,19 @@ var istr = {
     loading: '正在加载中...',
     noTextParsed: '解析失败：未能从该轨道提取出有效文本',
     fastScrollHint: '当行数较多时，可以用 PageUp/PageDown 快速滚动。',
-
+    noCutTime: '未设置时间',
+    setCutTimeFirst: '请先设置起始时间和结束时间',
+    exporting: '正在导出，请耐心等待...\n',
+    aborted: '操作已中止。',
+    auto: '自动',
+    editCrops: ['编辑裁切矩形左上角', '编辑裁切矩形右下角'],
+    videoCutHint: '点击按钮 A/B 设置起点/终点，然后导出文件。',
+    action: '操作',
+    cannotCropOrResize: '不支持裁切和缩放',
+    cropKeysInfo: '方向键←↑→↓: 移动裁切矩形的左上角。\nTAB: 切换为移动裁切矩形的右下角。\nESC: 退出裁切。',
+    resizeHint: '输入格式: 宽度:高度。示例: ',
+    sizeTitles: ['宽度: ', '  高度: '],
+    inputFormatError: '输入格式错误。',
 }
 
 var systemLang = mp.utils.getenv('LANG')
@@ -111,6 +133,7 @@ else {
     istr.finish = 'Finished'
     istr.error = 'Error'
     istr.selectTrack = 'Select a track to view its content'
+    istr.videoCut = 'Video Cut'
     istr.ok = 'Ok'
     istr.saveSubFile = 'Save as file'
     istr.copySubAllToClipboard = 'Copy all to clipboard'
@@ -118,12 +141,18 @@ else {
     istr.openFileDir = 'Open directory'
     istr.seekTime = 'Jump to the start time of this line'
     istr.viewSubText = 'View sub text'
+    istr.setCutTimes = ['Set cut start time', 'Set cut end time']
+    istr.resize = 'Resize'
+    istr.beginCrop = 'Begin cropping'
+    istr.reset = 'Reset'
+    istr.exportAs = 'Export as...'
+    istr.abort = 'Abort'
     istr.copied = 'Copied to clipboard.'
     istr.subprocessFailed = 'Subprocess failed!'
     istr.formatUnsupported = 'Format unsupported: '
     istr.videoPathNotFound = 'Cannot find video local path'
     istr.subTrackNotFound = 'Cannot find the sub track'
-    istr.savedToVideoDir = 'Saved to video dir: '
+    istr.savedToVideoDir = 'Saved to video dir: \n'
     istr.noPermissionAndCopied = 'There is no write permission, so content is copied to clipboard.'
     istr.noSubtrack = 'No subtitle track. Please try other videos or add external subtitle files.'
     istr.supportFormat = 'Supported format: '
@@ -133,6 +162,19 @@ else {
     istr.loading = 'Loading...'
     istr.noTextParsed = 'Parsing failed. No valid text in this track.'
     istr.fastScrollHint = 'Press PageUp/PageDown to fast scroll if there are too many lines.'
+    istr.noCutTime = 'time not set'
+    istr.setCutTimeFirst = 'Please set start and end time first.'
+    istr.exporting = 'Exporting. Please wait patiently...\n'
+    istr.aborted = 'Aborted.'
+    istr.auto = 'Auto'
+    istr.editCrops = ['Editing top-left of the crop rect', 'Editing bottom-right of the crop rect']
+    istr.videoCutHint = 'Click A/B button to set start/end time and then export file.'
+    istr.action = 'Action'
+    istr.cannotCropOrResize = 'Crop and resize not supported.'
+    istr.cropKeysInfo = 'Arrow keys (←↑→↓): Move the top-left corner of the crop rectangle.\nTAB: Switch to moving the bottom-right corner.\nESC: Exit cropping.'
+    istr.resizeHint = 'Input format: WIDTH:HEIGHT . Examples: '
+    istr.sizeTitles = ['Width: ', '  Height: '],
+    istr.inputFormatError = 'Wrong Input format.'
 }
 
 // #endregion
@@ -692,7 +734,7 @@ function saveSubToVideoDir(contentToSave, track) {
     var targetFilePath = videoPath + '.' + track.lang + suffix;
     try {
         mp.utils.write_file("file://" + targetFilePath, contentToSave);
-        uosc.showText(istr.finish, istr.savedToVideoDir + '\n' + targetFilePath, ['open-dir', 'ok'], targetFilePath);
+        uosc.showText(istr.finish, istr.savedToVideoDir + targetFilePath, ['open-dir', 'ok'], targetFilePath);
     } catch (error) {
         // flatpak 限制了可写入的目录。没权限会报错 Cannot open (write) file。在这里改为复制到剪切板
         if (error.message.indexOf('Cannot open (write) file') !== -1) {
